@@ -1,0 +1,7 @@
+syntax = "proto3";
+option go_package = "./comms_handler";
+
+message RegisterMessage{
+    string machine = 1;
+    string port = 2;
+}
