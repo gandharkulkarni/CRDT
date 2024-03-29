@@ -3,5 +3,5 @@ option go_package = "./comms_handler";
 
 message RegisterMessage{
     string machine = 1;
-    string port = 2;
+    int64 port = 2;
 }
