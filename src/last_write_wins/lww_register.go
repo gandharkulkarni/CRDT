@@ -1,4 +1,4 @@
-package main
+package lww
 
 /* Properties are not exported */
 type State struct {
