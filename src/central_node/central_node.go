@@ -2,8 +2,8 @@ package main
 
 import (
 	"crdt/src/comms_handler"
+	"crdt/src/helper"
 	"flag"
-	"log"
 	"net"
 	"strconv"
 )
@@ -20,12 +20,12 @@ func main() {
 	}
 
 	go registerCollabNodes(port)
-	//TODO: create file & class for collaborating nodes
+	shareCollabNodeDetails(port)
 
 }
 func registerCollabNodes(port *int) {
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port))
-	checkErr(err)
+	helper.CheckErr(err)
 	for {
 		if conn, err := listener.Accept(); err == nil {
 			commsHandler := comms_handler.NewRegisterCommsHandler(conn)
@@ -36,16 +36,23 @@ func registerCollabNodes(port *int) {
 
 func handleCollabRegistration(msgHandler *comms_handler.RegisterCommsHandler) {
 	msg, err := msgHandler.Receive()
-	checkErr(err)
+	helper.CheckErr(err)
 	_, ok := nodeMap[msg.GetMachine()]
 	if !ok {
 		nodeMap[msg.GetMachine()] = msg.GetPort()
 	}
 }
 
-func checkErr(err error) {
-	if err != nil {
-		log.Fatalln(err.Error())
-		return
+func shareCollabNodeDetails(port *int) {
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port+1))
+	helper.CheckErr(err)
+	for {
+		if conn, err := listener.Accept(); err == nil {
+			// TODO: Share details of collab node
+		}
 	}
+}
+
+func handleCollabRequest() {
+
 }
