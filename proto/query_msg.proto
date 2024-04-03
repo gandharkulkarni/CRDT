@@ -5,4 +5,5 @@ message QueryMessage{
     string machine = 1;
     int32 listenPort = 2;
     int32 talkPort = 3;
+    bool status = 4;
 }
