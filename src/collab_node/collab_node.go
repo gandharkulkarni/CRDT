@@ -82,8 +82,12 @@ func getCollabNodeDetails(centralHostDetails string, collaborator string) collab
 	collabNodeComms.Send(msg)
 	response, err := collabNodeComms.Receive()
 	helper.CheckErr(err)
-	collabSource := collabNode{collaborator, response.GetListenPort(), response.GetTalkPort()}
-	return collabSource
+	if response.GetStatus() {
+		collabSource := collabNode{collaborator, response.GetListenPort(), response.GetTalkPort()}
+		return collabSource
+	} else {
+		panic("Invalid collab node requested")
+	}
 }
 
 func startCollabEnvironment() {

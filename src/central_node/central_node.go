@@ -78,9 +78,11 @@ func handleCollabRequest(queryCommsHandler *comms_handler.QueryCommsHandler) {
 			Machine:    machine,
 			ListenPort: ports.listenPort,
 			TalkPort:   ports.talkPort,
+			Status:     true,
 		}
 		queryCommsHandler.Send(response)
 	} else {
-		// TODO: send invalid response
+		// send invalid response
+		queryCommsHandler.Send(&comms_handler.QueryMessage{Status: false})
 	}
 }
