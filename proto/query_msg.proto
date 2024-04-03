@@ -3,6 +3,6 @@ option go_package = "./comms_handler";
 
 message QueryMessage{
     string machine = 1;
-    string listenPort = 2;
-    string talkPort = 3;
+    int32 listenPort = 2;
+    int32 talkPort = 3;
 }
