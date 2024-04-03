@@ -1,11 +1,21 @@
 package main
 
 import (
+	"crdt/src/comms_handler"
 	"crdt/src/helper"
 	"flag"
+	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 )
+
+type collabNode struct {
+	machine    string
+	listenPort int32
+	talkPort   int32
+}
 
 func main() {
 	port := flag.Int("port", 7000, "Listner port")
@@ -20,27 +30,63 @@ func main() {
 	if *central == "" {
 		panic("Insufficient number of arguments. Usage: main.go -central=<machine:port>")
 	}
-
-	machine, err := os.Hostname()
+	fmt.Println("Listener port :", *port)
+	fmt.Println("Sender port :", *port+1)
+	machine, err := os.Hostname() //machine.domain
 	helper.CheckErr(err)
+	machine = strings.Split(machine, ".")[0]
 
-	details := strings.Split(*central, ":")
-	centralNodeName := details[0]
-	centralNodePort := details[1]
-
-	// TODO: If machine name not given, register with central node port connect to
-	registerWithCentralNode()
+	centralHostDetails := *central
+	queryPort, err := strconv.Atoi(strings.Split(centralHostDetails, ":")[1])
+	helper.CheckErr(err)
+	queryHostDetails := strings.Split(centralHostDetails, ":")[0] + ":" + strconv.Itoa(queryPort+1)
+	// If machine name not given, register with central node port connect to
+	registerWithCentralNode(centralHostDetails, machine, int64(*port))
 	if *collaborator != "" {
 		// TODO: If machine name given, register with central node and get port no for machine name, connect to port+1
-		getCollabNodeDetails()
+		getCollabNodeDetails(queryHostDetails, *collaborator)
 	}
-
+	// TODO: Start CRDT environment
+	startCollabEnvironment()
+}
+func connectToCentralNode(centralHostDetails string) net.Conn {
+	conn, err := net.Dial("tcp", centralHostDetails)
+	helper.CheckErr(err)
+	return conn
 }
 
-func registerWithCentralNode() {
+func registerWithCentralNode(centralHostDetails string, machine string, port int64) {
+	conn := connectToCentralNode(centralHostDetails)
+	defer conn.Close()
+	collabNodeComms := comms_handler.NewRegisterCommsHandler(conn)
 
+	message := &comms_handler.RegisterMessage{
+		Machine:    machine,
+		ListenPort: port,
+		TalkPort:   port + 1,
+	}
+	collabNodeComms.Send(message)
+	response, err := collabNodeComms.Receive()
+	helper.CheckErr(err)
+	if !response.GetStatus() {
+		fmt.Println(response.GetStatus())
+		panic("Error in registration")
+	}
 }
 
-func getCollabNodeDetails() {
+func getCollabNodeDetails(centralHostDetails string, collaborator string) collabNode {
+	conn := connectToCentralNode(centralHostDetails)
+	defer conn.Close()
+	collabNodeComms := comms_handler.NewQueryCommsHandler(conn)
+	msg := &comms_handler.QueryMessage{Machine: collaborator}
+	collabNodeComms.Send(msg)
+	response, err := collabNodeComms.Receive()
+	helper.CheckErr(err)
+	collabSource := collabNode{collaborator, response.GetListenPort(), response.GetTalkPort()}
+	return collabSource
+}
 
+func startCollabEnvironment() {
+	for {
+	}
 }
