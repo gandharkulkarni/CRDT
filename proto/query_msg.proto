@@ -1,0 +1,6 @@
+syntax = "proto3";
+option go_package = "./comms_handler";
+
+message QueryMessage{
+    string machine = 1;
+}
