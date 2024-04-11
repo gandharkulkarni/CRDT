@@ -2,6 +2,7 @@ package main
 
 import (
 	"crdt/src/comms_handler"
+	"crdt/src/constants"
 	"crdt/src/helper"
 	"flag"
 	"fmt"
@@ -17,23 +18,27 @@ type port struct {
 var nodeMap = make(map[string]port)
 
 func main() {
-	port := flag.Int("port", 7000, "Listner port")
+	port := flag.Int("port", constants.CENTRAL_PORT, "Listner port")
 
 	flag.Parse()
 
 	if *port == 0 {
 		panic("Insufficient number of arguments. Usage: main.go -port=<port>")
 	}
-	//Register collab nodes
-	go registerCollabNodes(port)
-	//Share details of registered nodes
-	shareCollabNodeDetails(port)
+
+	//* Register collab nodes
+	registrationPort := strconv.Itoa(*port)
+	go registerCollabNodes(registrationPort)
+
+	//* Share details of registered nodes
+	detailDispatcherPort := strconv.Itoa(*port + 1)
+	shareCollabNodeDetails(detailDispatcherPort)
 
 }
-func registerCollabNodes(port *int) {
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port))
+func registerCollabNodes(port string) {
+	listener, err := net.Listen("tcp", ":"+port)
 	helper.CheckErr(err)
-	fmt.Println("Registering collab nodes on port: ", strconv.Itoa(*port))
+	fmt.Println("Registering collab nodes on port: ", port)
 	for {
 		if conn, err := listener.Accept(); err == nil {
 			fmt.Println("Node connected")
@@ -55,10 +60,10 @@ func handleCollabRegistration(msgHandler *comms_handler.RegisterCommsHandler) {
 	msgHandler.Send(&comms_handler.RegisterMessage{Machine: msg.GetMachine(), ListenPort: msg.GetListenPort(), TalkPort: msg.GetTalkPort(), Status: true})
 }
 
-func shareCollabNodeDetails(port *int) {
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port+1))
+func shareCollabNodeDetails(port string) {
+	listener, err := net.Listen("tcp", ":"+port)
 	helper.CheckErr(err)
-	fmt.Println("Listening for collab nodes on port: ", strconv.Itoa(*port+1))
+	fmt.Println("Listening for collab nodes on port: ", port)
 	for {
 		if conn, err := listener.Accept(); err == nil {
 			// Share details of collab node
