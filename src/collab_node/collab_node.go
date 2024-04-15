@@ -25,6 +25,8 @@ type collabNode struct {
 var dataChannel chan string
 var quitChannel chan os.Signal
 var port *int
+var lwwReg *lww.LWWRegister
+var id int64 = 0
 
 func main() {
 	port = flag.Int("port", constants.COLLAB_PORT, "Listner port")
@@ -114,12 +116,15 @@ func getCollabNodeDetails(centralHostDetails string, collaborator string) collab
 }
 
 func startCollabEnvironment(machine string, collab collabNode) {
-	var lwwReg *lww.LWWRegister = lww.InitializeLWWRegister(machine, machine, 0, "")
+	lwwReg = lww.InitializeLWWRegister(machine, machine, 0, "")
 	fmt.Println(lwwReg)
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("Environment stated")
-	go handleReceive()
-	go handleSend()
+	if collab.machine == machine {
+		go startSrcListeningPort(machine)
+	} else {
+		go connectToCollabSource(machine, collab)
+	}
 	for {
 		fmt.Println("you can start editing")
 		scanner.Scan()
@@ -129,30 +134,50 @@ func startCollabEnvironment(machine string, collab collabNode) {
 
 		// Send the local updates to other peers
 		dataChannel <- input
-
-		//TODO: listen for updates from collab node
 	}
 }
-
-func handleReceive() {
+func startSrcListeningPort(machine string) {
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port))
+	helper.CheckErr(err)
 	for {
-		select {
-		case data := <-dataChannel:
-			fmt.Println("Received data:", data)
-			// call merge method
-		case <-quitChannel:
-			fmt.Println("Received quit signal, stopping receiver.")
-			return
+		if conn, err := listener.Accept(); err == nil {
+			fmt.Println("Node connected")
+			communicateWithPeers(machine, conn)
 		}
 	}
+
+}
+func communicateWithPeers(machine string, conn net.Conn) {
+	syncCommsHandler := comms_handler.NewSyncCommsHandler(conn)
+	go handleReceive(syncCommsHandler)
+	go handleSend(syncCommsHandler, machine)
 }
 
-func handleSend(data string) {
+func connectToCollabSource(machine string, collab collabNode) {
+	conn, err := net.Dial("tcp", collab.machine+":"+strconv.Itoa(int(collab.listenPort)))
+	helper.CheckErr(err)
+	communicateWithPeers(machine, conn)
+
+}
+
+func handleReceive(syncCommsHandler *comms_handler.SyncCommsHandler) {
+	for {
+		data, err := syncCommsHandler.Receive()
+		helper.CheckErr(err)
+		fmt.Println("Received data:", data)
+		// call merge method
+	}
+}
+
+func handleSend(syncCommsHandler *comms_handler.SyncCommsHandler, machine string) {
 	for {
 		select {
 		case data := <-dataChannel: // Hypothetical Send function
 			// Send data over network
 			fmt.Println("Sending data:", data)
+			state := &comms_handler.State{Id: machine, Timestamp: id, Value: data}
+			syncCommsHandler.Send(&comms_handler.SyncMessage{Id: id, State: state})
+			id++
 		case <-quitChannel:
 			fmt.Println("Received quit signal, stopping sender.")
 			return
