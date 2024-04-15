@@ -1,0 +1,1 @@
+go run ./collab_node/collab_node.go

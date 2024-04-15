@@ -1,0 +1,1 @@
+go run ./central_node/central_node.go
