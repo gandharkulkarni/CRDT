@@ -37,6 +37,9 @@ func InitializeLWWRegister(id string, peer string, timestamp int, value string) 
 		},
 	}
 }
+func (local *LWWRegister) UpdateLocalState(value string) {
+	local.state.value = value
+}
 func (local *LWWRegister) Merge(state State) {
 	if local.state.timestamp > state.timestamp {
 		return
