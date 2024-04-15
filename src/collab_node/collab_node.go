@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 type collabNode struct {
@@ -20,8 +22,12 @@ type collabNode struct {
 	talkPort   int32
 }
 
+var dataChannel chan string
+var quitChannel chan os.Signal
+var port *int
+
 func main() {
-	port := flag.Int("port", constants.COLLAB_PORT, "Listner port")
+	port = flag.Int("port", constants.COLLAB_PORT, "Listner port")
 	central := flag.String("central", constants.CENTRAL, "Central machine:port")
 	collaborator := flag.String("collab", "", "Other collaborator node name")
 
@@ -34,24 +40,37 @@ func main() {
 		panic("Insufficient number of arguments. Usage: main.go -central=<machine:port>")
 	}
 	fmt.Println("Listener port :", *port)
-	fmt.Println("Sender port :", *port+1)
+	// fmt.Println("Sender port :", *port+1)
 	machine, err := os.Hostname() //machine.domain
 	helper.CheckErr(err)
 	machine = strings.Split(machine, ".")[0]
 
+	// Create a channel to communicate between goroutines
+	dataChannel = make(chan string)
+
+	// Create a channel to listen for a signal to quit
+	quitChannel = make(chan os.Signal, 1)
+	signal.Notify(quitChannel, syscall.SIGINT, syscall.SIGTERM)
+
 	centralHostDetails := *central
 	queryPort, err := strconv.Atoi(strings.Split(centralHostDetails, ":")[1])
 	helper.CheckErr(err)
+
 	queryHostDetails := strings.Split(centralHostDetails, ":")[0] + ":" + strconv.Itoa(queryPort+1)
-	// If machine name not given, register with central node port connect to
+
 	registerWithCentralNode(centralHostDetails, machine, int64(*port))
+
+	var collabSource collabNode = collabNode{machine: machine}
+
 	if *collaborator != "" {
 		//? If machine name given, register with central node and get port no for machine name, connect to port+1
-		collabSource := getCollabNodeDetails(queryHostDetails, *collaborator)
-	} else {
-		// Start CRDT environment
-		startCollabEnvironment(machine)
+		collabSource = getCollabNodeDetails(queryHostDetails, *collaborator)
 	}
+	// Start CRDT environment
+	startCollabEnvironment(machine, collabSource)
+
+	<-quitChannel
+	fmt.Println("Program exiting.")
 }
 func connectToCentralNode(centralHostDetails string) net.Conn {
 	conn, err := net.Dial("tcp", centralHostDetails)
@@ -94,18 +113,49 @@ func getCollabNodeDetails(centralHostDetails string, collaborator string) collab
 	}
 }
 
-func startCollabEnvironment(machine string) {
+func startCollabEnvironment(machine string, collab collabNode) {
 	var lwwReg *lww.LWWRegister = lww.InitializeLWWRegister(machine, machine, 0, "")
+	fmt.Println(lwwReg)
 	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Println("Environment stated")
+	go handleReceive()
+	go handleSend()
 	for {
+		fmt.Println("you can start editing")
+		scanner.Scan()
 		input := scanner.Text()
+		lwwReg.UpdateLocalState(input)
+		fmt.Println("Current state", lwwReg.GetValue())
 
-		//TODO: Need to write a method to change the state text
+		// Send the local updates to other peers
+		dataChannel <- input
 
 		//TODO: listen for updates from collab node
-		//TODO: Call merge function
+	}
+}
 
-		//TODO: May have to change proto for collab msg
+func handleReceive() {
+	for {
+		select {
+		case data := <-dataChannel:
+			fmt.Println("Received data:", data)
+			// call merge method
+		case <-quitChannel:
+			fmt.Println("Received quit signal, stopping receiver.")
+			return
+		}
+	}
+}
 
+func handleSend(data string) {
+	for {
+		select {
+		case data := <-dataChannel: // Hypothetical Send function
+			// Send data over network
+			fmt.Println("Sending data:", data)
+		case <-quitChannel:
+			fmt.Println("Received quit signal, stopping sender.")
+			return
+		}
 	}
 }
