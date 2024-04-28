@@ -27,6 +27,14 @@ func (local *LWWRegister) GetValue() string {
 	return local.state.value
 }
 
+func (local *LWWRegister) PopulatePeerState(peer string, timestamp int, value string) State {
+	return State{
+		peer:      peer,
+		timestamp: int64(timestamp),
+		value:     value,
+	}
+}
+
 func InitializeLWWRegister(id string, peer string, timestamp int, value string) *LWWRegister {
 	return &LWWRegister{
 		id: id,

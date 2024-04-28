@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -115,25 +116,36 @@ func getCollabNodeDetails(centralHostDetails string, collaborator string) collab
 	}
 }
 
+/*
+*
+Starts collab environment by initializing struct and channel
+*/
 func startCollabEnvironment(machine string, collab collabNode) {
 	lwwReg = lww.InitializeLWWRegister(machine, machine, 0, "")
 	fmt.Println(lwwReg)
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("Environment stated")
+	go startHttpServer()
 	if collab.machine == machine {
 		go startSrcListeningPort(machine)
 	} else {
 		go connectToCollabSource(machine, collab)
 	}
+	fmt.Println("you can start editing")
 	for {
-		fmt.Println("you can start editing")
-		scanner.Scan()
-		input := scanner.Text()
-		lwwReg.UpdateLocalState(input)
-		fmt.Println("Current state", lwwReg.GetValue())
+		select {
+		case <-quitChannel:
+			fmt.Println("Received quit signal, stopping receiver.")
+			return
+		default:
+			scanner.Scan()
+			input := scanner.Text()
+			lwwReg.UpdateLocalState(input)
+			fmt.Println("Current state", lwwReg.GetValue())
 
-		// Send the local updates to other peers
-		dataChannel <- input
+			// Send the local updates to other peers
+			dataChannel <- input
+		}
 	}
 }
 func startSrcListeningPort(machine string) {
@@ -162,10 +174,21 @@ func connectToCollabSource(machine string, collab collabNode) {
 
 func handleReceive(syncCommsHandler *comms_handler.SyncCommsHandler) {
 	for {
-		data, err := syncCommsHandler.Receive()
-		helper.CheckErr(err)
-		fmt.Println("Received data:", data)
-		// call merge method
+		select {
+		case <-quitChannel:
+			syncCommsHandler.Close()
+			fmt.Println("Received quit signal, stopping receiver.")
+			return
+		default:
+			data, err := syncCommsHandler.Receive()
+			helper.CheckErr(err)
+			fmt.Println("Received data:", data)
+			// call merge method
+			peerState := lwwReg.PopulatePeerState(data.GetState().GetId(), int(data.GetState().GetTimestamp()), data.GetState().GetValue())
+			lwwReg.Merge(peerState)
+			fmt.Println("State updated, Current state:", lwwReg.GetValue())
+		}
+
 	}
 }
 
@@ -179,8 +202,47 @@ func handleSend(syncCommsHandler *comms_handler.SyncCommsHandler, machine string
 			syncCommsHandler.Send(&comms_handler.SyncMessage{Id: id, State: state})
 			id++
 		case <-quitChannel:
+			syncCommsHandler.Close()
 			fmt.Println("Received quit signal, stopping sender.")
 			return
+		}
+	}
+}
+
+func startHttpServer() {
+	http.HandleFunc("/state", httpRequestHandler)
+	fmt.Println("Starting server on port:", constants.HTTP_PORT)
+	http.ListenAndServe(":"+strconv.Itoa(constants.HTTP_PORT), nil)
+}
+
+func httpRequestHandler(w http.ResponseWriter, r *http.Request) {
+	select {
+	case <-quitChannel:
+		fmt.Println("Received quit signal, stopping server.")
+		return
+	default:
+		switch r.Method {
+		case "GET":
+			// Retrieve the latest state (e.g., from lwwReg or any other data structure)
+			latestState := lwwReg.GetValue()
+
+			// Send the latest state as the response
+			fmt.Fprintf(w, "Latest state: %s\n", latestState)
+		case "POST":
+			// Read the data from the POST request
+			err := r.ParseForm()
+			if err != nil {
+				http.Error(w, "Error parsing form data", http.StatusBadRequest)
+				return
+			}
+			inputData := r.FormValue("data") //UI sends data as a form field named "data"
+			//update local state
+			lwwReg.UpdateLocalState(inputData)
+			fmt.Println("Current state", lwwReg.GetValue())
+			//Send data over channel
+			dataChannel <- inputData
+		default:
+			fmt.Fprintf(w, "Only GET and POST methods are supported. You tried: %s\n", r.Method)
 		}
 	}
 }
