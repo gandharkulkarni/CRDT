@@ -11,10 +11,8 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 type collabNode struct {
@@ -24,7 +22,6 @@ type collabNode struct {
 }
 
 var dataChannel chan string
-var quitChannel chan os.Signal
 var port *int
 var lwwReg *lww.LWWRegister
 var id int64 = 0
@@ -43,17 +40,12 @@ func main() {
 		panic("Insufficient number of arguments. Usage: main.go -central=<machine:port>")
 	}
 	fmt.Println("Listener port :", *port)
-	// fmt.Println("Sender port :", *port+1)
 	machine, err := os.Hostname() //machine.domain
 	helper.CheckErr(err)
 	machine = strings.Split(machine, ".")[0]
 
 	// Create a channel to communicate between goroutines
 	dataChannel = make(chan string)
-
-	// Create a channel to listen for a signal to quit
-	quitChannel = make(chan os.Signal, 1)
-	signal.Notify(quitChannel, syscall.SIGINT, syscall.SIGTERM)
 
 	centralHostDetails := *central
 	queryPort, err := strconv.Atoi(strings.Split(centralHostDetails, ":")[1])
@@ -71,9 +63,6 @@ func main() {
 	}
 	// Start CRDT environment
 	startCollabEnvironment(machine, collabSource)
-
-	<-quitChannel
-	fmt.Println("Program exiting.")
 }
 func connectToCentralNode(centralHostDetails string) net.Conn {
 	conn, err := net.Dial("tcp", centralHostDetails)
@@ -133,19 +122,13 @@ func startCollabEnvironment(machine string, collab collabNode) {
 	}
 	fmt.Println("you can start editing")
 	for {
-		select {
-		case <-quitChannel:
-			fmt.Println("Received quit signal, stopping receiver.")
-			return
-		default:
-			scanner.Scan()
-			input := scanner.Text()
-			lwwReg.UpdateLocalState(input)
-			fmt.Println("Current state", lwwReg.GetValue())
+		scanner.Scan()
+		input := scanner.Text()
+		lwwReg.UpdateLocalState(input)
+		fmt.Println("Current state", lwwReg.GetValue())
 
-			// Send the local updates to other peers
-			dataChannel <- input
-		}
+		// Send the local updates to other peers
+		dataChannel <- input
 	}
 }
 func startSrcListeningPort(machine string) {
@@ -174,21 +157,13 @@ func connectToCollabSource(machine string, collab collabNode) {
 
 func handleReceive(syncCommsHandler *comms_handler.SyncCommsHandler) {
 	for {
-		select {
-		case <-quitChannel:
-			syncCommsHandler.Close()
-			fmt.Println("Received quit signal, stopping receiver.")
-			return
-		default:
-			data, err := syncCommsHandler.Receive()
-			helper.CheckErr(err)
-			fmt.Println("Received data:", data)
-			// call merge method
-			peerState := lwwReg.PopulatePeerState(data.GetState().GetId(), int(data.GetState().GetTimestamp()), data.GetState().GetValue())
-			lwwReg.Merge(peerState)
-			fmt.Println("State updated, Current state:", lwwReg.GetValue())
-		}
-
+		data, err := syncCommsHandler.Receive()
+		helper.CheckErr(err)
+		fmt.Println("Received data:", data)
+		// call merge method
+		peerState := lwwReg.PopulatePeerState(data.GetState().GetId(), int(data.GetState().GetTimestamp()), data.GetState().GetValue())
+		lwwReg.Merge(peerState)
+		fmt.Println("State updated, Current state:", lwwReg.GetValue())
 	}
 }
 
@@ -201,10 +176,6 @@ func handleSend(syncCommsHandler *comms_handler.SyncCommsHandler, machine string
 			state := &comms_handler.State{Id: machine, Timestamp: id, Value: data}
 			syncCommsHandler.Send(&comms_handler.SyncMessage{Id: id, State: state})
 			id++
-		case <-quitChannel:
-			syncCommsHandler.Close()
-			fmt.Println("Received quit signal, stopping sender.")
-			return
 		}
 	}
 }
@@ -216,33 +187,26 @@ func startHttpServer() {
 }
 
 func httpRequestHandler(w http.ResponseWriter, r *http.Request) {
-	select {
-	case <-quitChannel:
-		fmt.Println("Received quit signal, stopping server.")
-		return
-	default:
-		switch r.Method {
-		case "GET":
-			// Retrieve the latest state (e.g., from lwwReg or any other data structure)
-			latestState := lwwReg.GetValue()
-
-			// Send the latest state as the response
-			fmt.Fprintf(w, "Latest state: %s\n", latestState)
-		case "POST":
-			// Read the data from the POST request
-			err := r.ParseForm()
-			if err != nil {
-				http.Error(w, "Error parsing form data", http.StatusBadRequest)
-				return
-			}
-			inputData := r.FormValue("data") //UI sends data as a form field named "data"
-			//update local state
-			lwwReg.UpdateLocalState(inputData)
-			fmt.Println("Current state", lwwReg.GetValue())
-			//Send data over channel
-			dataChannel <- inputData
-		default:
-			fmt.Fprintf(w, "Only GET and POST methods are supported. You tried: %s\n", r.Method)
+	switch r.Method {
+	case "GET":
+		// Retrieve the latest state (e.g., from lwwReg or any other data structure)
+		latestState := lwwReg.GetValue()
+		// Send the latest state as the response
+		fmt.Fprintf(w, "Latest state: %s\n", latestState)
+	case "POST":
+		// Read the data from the POST request
+		err := r.ParseForm()
+		if err != nil {
+			http.Error(w, "Error parsing form data", http.StatusBadRequest)
+			return
 		}
+		inputData := r.FormValue("data") //UI sends data as a form field named "data"
+		//update local state
+		lwwReg.UpdateLocalState(inputData)
+		fmt.Println("Current state", lwwReg.GetValue())
+		//Send data over channel
+		dataChannel <- inputData
+	default:
+		fmt.Fprintf(w, "Only GET and POST methods are supported. You tried: %s\n", r.Method)
 	}
 }
