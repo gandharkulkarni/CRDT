@@ -8,6 +8,7 @@ import (
 	lww "crdt/src/last_write_wins"
 	"flag"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -24,7 +25,6 @@ type collabNode struct {
 var dataChannel chan string
 var port *int
 var lwwReg *lww.LWWRegister
-var id int64 = 0
 
 func main() {
 	port = flag.Int("port", constants.COLLAB_PORT, "Listner port")
@@ -161,7 +161,7 @@ func handleReceive(syncCommsHandler *comms_handler.SyncCommsHandler) {
 		helper.CheckErr(err)
 		fmt.Println("Received data:", data)
 		// call merge method
-		peerState := lwwReg.PopulatePeerState(data.GetState().GetId(), int(data.GetState().GetTimestamp()), data.GetState().GetValue())
+		peerState := lwwReg.PopulatePeerState(data.GetState().GetPeer(), data.GetState().GetPeerId(), int(data.GetState().GetTimestamp()), data.GetState().GetValue())
 		lwwReg.Merge(peerState)
 		fmt.Println("State updated, Current state:", lwwReg.GetValue())
 	}
@@ -173,9 +173,12 @@ func handleSend(syncCommsHandler *comms_handler.SyncCommsHandler, machine string
 		case data := <-dataChannel: // Hypothetical Send function
 			// Send data over network
 			fmt.Println("Sending data:", data)
-			state := &comms_handler.State{Id: machine, Timestamp: id, Value: data}
-			syncCommsHandler.Send(&comms_handler.SyncMessage{Id: id, State: state})
-			id++
+			//Find number of operations
+			diff := math.Abs(float64((len(data) - len(lwwReg.GetValue()))))
+			//Find new peerId
+			newPeerId := lwwReg.GetPeerId() + int64(diff)
+			state := &comms_handler.State{Peer: machine, PeerId: newPeerId, Timestamp: lwwReg.GetTimestamp(), Value: data}
+			syncCommsHandler.Send(&comms_handler.SyncMessage{Id: lwwReg.GetTimestamp(), State: state})
 		}
 	}
 }

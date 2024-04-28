@@ -2,9 +2,10 @@ syntax = "proto3";
 option go_package = "./comms_handler";
 
 message State{
-    string id = 1;
-    int64 timestamp = 2;
-    string value = 3;
+    string peer = 1;
+    int64 peerId = 2;
+    int64 timestamp = 3;
+    string value = 4;
 }
 
 message SyncMessage{
