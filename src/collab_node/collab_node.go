@@ -6,6 +6,7 @@ import (
 	"crdt/src/constants"
 	"crdt/src/helper"
 	lww "crdt/src/last_write_wins"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math"
@@ -190,25 +191,34 @@ func startHttpServer() {
 }
 
 func httpRequestHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+	w.Header().Add("Access-Control-Allow-Credentials", "true")
+	w.Header().Add("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+	w.Header().Add("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 	switch r.Method {
 	case "GET":
 		// Retrieve the latest state (e.g., from lwwReg or any other data structure)
 		latestState := lwwReg.GetValue()
 		// Send the latest state as the response
-		fmt.Fprintf(w, "Latest state: %s\n", latestState)
+		fmt.Fprintf(w, "%s", latestState)
 	case "POST":
 		// Read the data from the POST request
-		err := r.ParseForm()
+		type Input struct {
+			Data string
+		}
+		var inputData Input
+		err := json.NewDecoder(r.Body).Decode(&inputData)
 		if err != nil {
 			http.Error(w, "Error parsing form data", http.StatusBadRequest)
 			return
 		}
-		inputData := r.FormValue("data") //UI sends data as a form field named "data"
+		// inputData := r.FormValue("data") //UI sends data as a form field named "data"
+		fmt.Println(inputData)
 		//update local state
-		lwwReg.UpdateLocalState(inputData)
+		lwwReg.UpdateLocalState(inputData.Data)
 		fmt.Println("Current state", lwwReg.GetValue())
 		//Send data over channel
-		dataChannel <- inputData
+		dataChannel <- inputData.Data
 	default:
 		fmt.Fprintf(w, "Only GET and POST methods are supported. You tried: %s\n", r.Method)
 	}
