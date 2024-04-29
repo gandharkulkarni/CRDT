@@ -26,11 +26,13 @@ type collabNode struct {
 var dataChannel chan string
 var port *int
 var lwwReg *lww.LWWRegister
+var HTTP_PORT int
 
 func main() {
 	port = flag.Int("port", constants.COLLAB_PORT, "Listner port")
 	central := flag.String("central", constants.CENTRAL, "Central machine:port")
 	collaborator := flag.String("collab", "", "Other collaborator node name")
+	http := flag.Int("http", -1, "HTTP Port")
 
 	flag.Parse()
 
@@ -40,7 +42,11 @@ func main() {
 	if *central == "" {
 		panic("Insufficient number of arguments. Usage: main.go -central=<machine:port>")
 	}
+	if *http == -1 {
+		panic("Insufficient number of arguments. Usage: main.go -http=<port>")
+	}
 	fmt.Println("Listener port :", *port)
+	HTTP_PORT = *http
 	machine, err := os.Hostname() //machine.domain
 	helper.CheckErr(err)
 	machine = strings.Split(machine, ".")[0]
@@ -186,8 +192,8 @@ func handleSend(syncCommsHandler *comms_handler.SyncCommsHandler, machine string
 
 func startHttpServer() {
 	http.HandleFunc("/state", httpRequestHandler)
-	fmt.Println("Starting server on port:", constants.HTTP_PORT)
-	http.ListenAndServe(":"+strconv.Itoa(constants.HTTP_PORT), nil)
+	fmt.Println("Starting server on port:", HTTP_PORT)
+	http.ListenAndServe(":"+strconv.Itoa(HTTP_PORT), nil)
 }
 
 func httpRequestHandler(w http.ResponseWriter, r *http.Request) {
