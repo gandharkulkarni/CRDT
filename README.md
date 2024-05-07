@@ -23,13 +23,15 @@ class LWWRegister<T> {
 }
 ```
 ### Demo
-A [demo] (https://drive.google.com/file/d/1KuCn3-mpacxnuBlkWBf-a_HYmugaVws4/view?usp=sharing) of the project is available, showcasing the real-time collaboration capabilities of the CRDT implementation.
+A [demo](https://drive.google.com/file/d/1KuCn3-mpacxnuBlkWBf-a_HYmugaVws4/view?usp=sharing) of the project is available, showcasing the real-time collaboration capabilities of the CRDT implementation.
 
 ### High-Level Design
+<img width="400" alt="crdt-high-level-design" src="https://github.com/gandharkulkarni/CRDT/assets/111133878/4aa1c3ca-54ee-4597-a064-5c8f59fc4942">
+
 
 
 ### References
-[An Interactive Intro to CRDTs by Jake lazaroff] (https://jakelazaroff.com/words/an-interactive-intro-to-crdts/)
+[An Interactive Intro to CRDTs by Jake lazaroff](https://jakelazaroff.com/words/an-interactive-intro-to-crdts/)
 
 
 ### Getting Started
